@@ -1479,6 +1479,8 @@ Details:
 - **3b. The student is already deactivated:**
   - 3b1. The system alerts the actor that the student is already deactivated.
   - 3b2. Use case ends; nothing changes.
+- **4a. The actor cancels at the warning:**
+  - 4a1. Use case ends; the student's account is unchanged.
 
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
