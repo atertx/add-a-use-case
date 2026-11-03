@@ -1476,7 +1476,10 @@ Details:
 - **3a. The actor is not permitted to deactivate this student (BR-student-lifecycle):**
   - 3a1. The system refuses the deactivation and alerts the actor that they do not have permission.
   - 3a2. Use case ends; the student's account is unchanged.
-  
+- **3b. The student is already deactivated:**
+  - 3b1. The system alerts the actor that the student is already deactivated.
+  - 3b2. Use case ends; nothing changes.
+
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
 **Business Rules:** BR-student-lifecycle
