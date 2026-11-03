@@ -1463,8 +1463,10 @@ Details:
 **Postconditions:**
 - POST-1. The student's account is deactivated.
 - POST-2. From her next request onward, the student is denied access to protected resources, including through a session she signed in to before the deactivation (FR-SEC-active-account).
+- POST-3. The date of the deactivation is recorded (BR-deactivated-student-evaluation).
 - POST-4. The student remains a member of her team, and her weekly activity reports and peer evaluations are kept (BR-student-lifecycle).
 
+**Business Rules:** BR-student-lifecycle, BR-submission-owed, BR-deactivated-student-evaluation
 **Main Success Scenario:**
 1. The course admin or instructor indicates to deactivate a student.
 2. The course admin or instructor views the details of this student through UC-STU-view-student: View a student.
