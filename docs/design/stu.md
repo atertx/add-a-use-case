@@ -62,10 +62,11 @@ classDiagram
     JwtAuthenticationConverter --> UserRepository
 ```
 
-- **Backend, `student/`:** `Student` gains `deactivatedOn` and three methods; `StudentService.deactivateStudent` (injects the `Clock`), which throws a new `StudentAlreadyDeactivatedException` for 3b; `StudentController.deactivateStudent`; `StudentSecurityService.isCurrentUserCourseAdminOfStudent` (the student's `section.course.courseAdmin` is the caller, read from the JWT like the existing checks, failing closed on an unknown id); `StudentDto` gains `deactivatedOn` and `evaluable`, both nullable, and `StudentToStudentDtoConverter` fills `deactivatedOn`.
-- **Backend, `security/`:** new `authorizationmanagers/StudentLifecycleAuthorizationManager` (reads `studentId`; admits `isCurrentUserInstructorOfStudentSection || isCurrentUserCourseAdminOfStudent`); `SecurityConfiguration` gains the route rule and the active-account check in its existing `jwtAuthenticationConverter` bean.
+- **Backend, `student/`:** `Student` gains `deactivatedOn` and three methods; `StudentService.deactivateStudent` (injects the `Clock`), which throws a new `StudentAlreadyDeactivatedException` for 3b; `StudentController.deactivateStudent`; `StudentSecurityService.isCurrentUserCourseAdminOfStudent` (the student's `section.course.courseAdmin` is the caller, whose id comes from `UserUtils`, failing closed on an unknown id); `StudentDto` gains `deactivatedOn` and `evaluable`, both nullable, and `StudentToStudentDtoConverter` fills `deactivatedOn`.
+- **Backend, `security/`:** new `authorizationmanagers/StudentLifecycleAuthorizationManager` (reads `studentId`; admits `isCurrentUserInstructorOfStudentSection || isCurrentUserCourseAdminOfStudent`). `SecurityConfiguration` gains the route rule, placed with the other `/students/{studentId}` rules (no broader `/students/**` matcher exists), and the active-account check in its existing `jwtAuthenticationConverter` bean. `GET /students/{studentId}` becomes `anyOf(userOwnershipAuthorizationManager, studentLifecycleAuthorizationManager)`, so the course admin who owns the course can open the student (step 2), as BR-section-scoped-access already allows.
 - **Backend, `evaluation/`:** `EvaluationService.addPeerEvaluation` and `generateWeeklyPeerEvaluationReportForSection` call `Student.isEvaluableFor(week)`.
 - **Migration:** `db/migration/V7__student_deactivated_on.sql`.
+- **Seed (`seed/DataInitializer`):** the seed has no disabled student today. Add one, made with `deactivate(date)` and never with `setEnabled(false)`, on a team in section 2, with her date inside the fixed clock's week, so the tests have a deactivated teammate.
 - **Reused unchanged:** `notification/SubmissionStatusService` already counts only students whose account is active, as owing and as teammates (BR-submission-owed), so reminders and the "has not submitted" lists change with no code; `ExceptionHandlerAdvice` (`AccountStatusException` → `401`); `request.ts` (redirects to login on `401`); `WeekKeys`; the `Clock` bean.
 - **Frontend:** `apis/student/index.ts` gains `deactivateStudent(id)`, and its `Student` type gains `deactivatedOn` and `evaluable`. In `pages/students/EditStudentForm.vue`, the Status switch is replaced: an active student shows a **Deactivate** button, and a deactivated student shows "Deactivated on {date}" with an interim **Re-enable** button. `pages/evaluations/SubmitTeamsEvaluations.vue` offers a teammate only when `evaluable` is `true`. `Students.vue` keeps its Enabled/Disabled tag.
 
@@ -91,18 +92,18 @@ sequenceDiagram
         SPA->>AM: POST /students/{studentId}/deactivation
         alt neither an assigned instructor nor the course admin of the course (3a)
             AM-->>SPA: 403
-            SPA-->>A: Permission refused (3a1)
+            SPA-->>A: request.ts toasts the message and opens the forbidden page (3a1)
         else permitted
             AM->>SC: pass
             SC->>SS: deactivateStudent(studentId)
             alt already deactivated (3b)
                 SS-->>SPA: 409 "This student is already deactivated."
-                SPA-->>A: Message, form reloads (3b1)
+                SPA-->>A: request.ts toasts the message; the form catches the rejection, closes, and the list reloads (3b1)
             else active
                 SS->>ST: deactivate(LocalDate.now(clock))
                 Note over ST: enabled = false, deactivatedOn = today, team unchanged (POST-1, POST-3, POST-4)
                 SC-->>SPA: 200, updated StudentDto
-                SPA-->>A: "{First Last} has been deactivated." and the list reloads (step 6)
+                SPA-->>A: "{First Last} has been deactivated.", the dialog closes and the list reloads (step 6)
             end
         end
     end
@@ -136,11 +137,11 @@ sequenceDiagram
 | Endpoint or job | Caller (who may) | Request | Success | Errors, by extension |
 |---|---|---|---|---|
 | `POST /api/v1/students/{studentId}/deactivation` | An instructor assigned to the student's course section, or the course admin who owns its course (BR-student-lifecycle, BR-section-scoped-access): `StudentLifecycleAuthorizationManager`, a route rule placed before the `denyAll()` catch-all | Path only, no body | `200`: the updated `StudentDto`, with `enabled: false` and `deactivatedOn` set | 3a: `403` in the `Result` envelope (FR-SEC-deny-unauthorized), row unchanged. 3b: `409 CONFLICT`, "This student is already deactivated.", row unchanged. An unknown `studentId` gets `403`, because the manager fails closed as `StudentSecurityService` already does |
-| `PUT /api/v1/students/{studentId}` (changed, interim) | Unchanged (`userOwnershipAuthorizationManager`; only `ROLE_instructor` may change `enabled`) | Unchanged | `enabled: true` on a deactivated student calls `reactivate()`, which clears `deactivatedOn`. Other fields are unchanged | `enabled: false` on an active student: `400 INVALID_ARGUMENT`, "Use Deactivate to deactivate a student." This interim path is retired when UC-STU-reactivate-student is designed |
-| `GET /api/v1/students/teams/{teamId}` (changed) | Unchanged (`teamMembershipAuthorizationManager`) | Unchanged | Each student also carries `evaluable`: whether she may be evaluated for the previous week (`WeekKeys.previousWeek(clock)`), the week the evaluation form rates. `deactivatedOn` is never filled on this route | Unchanged |
+| `PUT /api/v1/students/{studentId}` (changed, interim) | Unchanged (`userOwnershipAuthorizationManager`; only `ROLE_instructor` may change `enabled`) | Unchanged; the form keeps sending the student's current `enabled` | `enabled` equal to the stored value changes nothing about the account, so editing a deactivated student's name works. `enabled: true` on a deactivated student calls `reactivate()`, which clears `deactivatedOn` | `enabled: false` on an active student: `400 INVALID_ARGUMENT`, "Use Deactivate to deactivate a student." This interim path is retired when UC-STU-reactivate-student is designed |
+| `GET /api/v1/students/teams/{teamId}` (changed) | Unchanged (`teamMembershipAuthorizationManager`) | Unchanged | Each student also carries `evaluable`: whether she may be evaluated for the previous week (`WeekKeys.previousWeek(clock)`), the week the evaluation form rates. The controller sets `deactivatedOn` to null on this route after conversion, so teammates never receive it. The form offers a teammate only when `evaluable === true` | Unchanged |
 | `POST /api/v1/evaluations` (changed) | Unchanged | Unchanged | Unchanged | The evaluatee is not `isEvaluableFor(week)`: `400`, "{First} was deactivated and cannot be evaluated for this week." (BR-deactivated-student-evaluation) |
 | Every bearer-authenticated request | Any caller | — | Unchanged | The account named by the `userId` claim is deactivated or no longer exists: `401`, "User account is abnormal." (FR-SEC-active-account) |
-| `GET` weekly peer evaluation report for a course section (changed) | Unchanged | Unchanged | A deactivated student appears only for weeks with `isEvaluableFor(week)` true | Unchanged |
+| `GET /api/v1/evaluations/sections/{sectionId}/week/{week}` (changed) | Unchanged | Unchanged | A deactivated student has a row only for weeks with `isEvaluableFor(week)` true. Evaluations she wrote of others are unchanged in their rows | Unchanged |
 
 ## Key decisions
 
@@ -150,13 +151,15 @@ sequenceDiagram
 
 **One invariant, held by the entity.** For a student, `enabled` is false exactly when `deactivatedOn` is set. `Student.deactivate(date)` and `Student.reactivate()` are the only writers of either field for a student, so no service sets `enabled` directly. The date is `LocalDate.now(clock)`, which is calendar time under Crosscutting Concepts, so the `dev` fixed clock moves it too.
 
-**One evaluability rule.** `Student.isEvaluableFor(week)` is `enabled || week < WeekKeys.of(deactivatedOn)`. Week keys of the form `YYYY-Www` order as strings, so this means the week ended before the date of her deactivation (BR-deactivated-student-evaluation). `addPeerEvaluation`, the section report and the teammate list all call it. Rejected: one check per caller, which would let the form and the server disagree.
+**One evaluability rule.** `Student.isEvaluableFor(week)` is `enabled || week < WeekKeys.of(deactivatedOn)`. Week keys are ISO (`WeekKeys`: Monday start, week-based year) and of the form `YYYY-Www`, so they order as strings, and this means the week ended before the date of her deactivation (BR-deactivated-student-evaluation). `deactivatedOn` comes from the `Clock`, so it is a date in `app.timezone`, the same zone that names the weeks. `addPeerEvaluation`, the section report and the teammate list all call it. Rejected: one check per caller, which would let the form and the server disagree.
 
 **The server decides whether the evaluation form offers a teammate.** The teammate list carries `evaluable`, computed for the previous week, and the form offers her only when it is true. For example, a student deactivated on Wednesday of week 9 is still evaluable for week 8, which her teammates rate during week 9. Rejected: hiding teammates whose `enabled` is false, which contradicts BR-deactivated-student-evaluation in exactly that case. Rejected: sending her deactivation date to the form and comparing weeks there, which duplicates the rule client-side and shows teammates the date.
 
 **The active-account check runs on every bearer request, in the `jwtAuthenticationConverter`.** The converter loads the user named by the `userId` claim and throws `DisabledException` when the account is deactivated or gone. The existing entry point and `ExceptionHandlerAdvice` turn that into a `401`, and the SPA already redirects to login on a `401`. This realizes FR-SEC-active-account for students and instructors alike, at one primary-key read per request. For deactivated accounts it closes part of [TD-jwt-revocation](architectural-design.md#risks-and-technical-debt); a leaked token for an active account is still valid for its full 2 hours. Rejected: a revocation list or a token version, which add state to keep and clean up. Rejected: shorter token lifetimes, which shrink the window but still miss "her next request". **This changes platform-tier sections of the architecture-of-record (Crosscutting Concepts > Authentication, the authorized-request runtime view, TD-jwt-revocation). Per `/design`, those sections are amended in a separate change, not by this design.**
 
-**Authorization through a new manager.** `StudentLifecycleAuthorizationManager` admits the assigned instructor or the course admin of the student's course. Rejected: `UserOwnershipAuthorizationManager`, which also admits the student herself and checks only assigned instructors. Rejected: `StudentInstructorAuthorizationManager` alone, for the same course-admin gap.
+**Refusals come at confirm, not before the warning.** The use case places 3a and 3b at step 3. The form shows Deactivate only for an enabled student, which covers 3b in the normal case, and the server refuses both at the `POST`, after the warning. The warning changes nothing, so a refusal after it still leaves the account unchanged (3a2, 3b2). Rejected: a pre-check endpoint called before the warning, which adds a route for a rare case.
+
+**Authorization through a new manager.** `StudentLifecycleAuthorizationManager` admits the assigned instructor or the course admin of the student's course. Rejected: `UserOwnershipAuthorizationManager`, which also admits the student herself and checks only assigned instructors. Rejected: `StudentInstructorAuthorizationManager` alone, for the same course-admin gap. The same gap blocks the course admin at step 2, so `GET /students/{studentId}` also admits this manager. The interim `PUT` keeps its current rule, so until UC-STU-reactivate-student is built only an assigned instructor can re-enable. Accepted, because the rule is interim.
 
 ## Data model
 
@@ -186,12 +189,12 @@ erDiagram
 | Use case, flow | Level | Asserts |
 |---|---|---|
 | UC-STU-deactivate-student main | integration | An instructor assigned to the course section posts `…/deactivation`: `200`, `enabled` false, `deactivatedOn` is the fixed clock's date |
-| UC-STU-deactivate-student main, course admin | integration | The course admin who owns the course but is not assigned to the course section gets `200` |
+| UC-STU-deactivate-student main, course admin | integration | The course admin who owns the course but is not assigned to the course section gets `200` on `GET /students/{studentId}` (step 2) and on the deactivation |
 | UC-STU-deactivate-student 3a | integration | An unassigned instructor, a course admin of another course, the student herself, and another student each get `403` in the `Result` envelope; the row is unchanged |
 | UC-STU-deactivate-student 3b | integration | A second deactivation gets `409`; `deactivatedOn` is unchanged |
 | UC-STU-deactivate-student 4a | E2E (Cypress, API stubbed) | Cancel at the confirmation sends no request |
-| UC-STU-deactivate-student step 4 | E2E (Cypress, API stubbed) | The confirmation states each consequence in the Associated Information |
-| UC-STU-deactivate-student step 6 | E2E (Cypress, API stubbed) | After a `200`, the success message names the student and the form shows "Deactivated on {date}" |
+| UC-STU-deactivate-student step 4 | E2E (Cypress, API stubbed) | The confirmation contains one sentence for each consequence listed under the sequence diagram (matched on a key phrase per sentence: "log in", "team", "owes", "evaluate", "report", "kept", "reactivated") |
+| UC-STU-deactivate-student step 6 | E2E (Cypress, API stubbed) | After a `200`, the success message names the student, the dialog closes, and the list shows her as Disabled; reopening her shows "Deactivated on {date}" |
 | POST-2, FR-SEC-active-account | integration | A token issued before deactivation gets `401` on its next request; a login afterwards gets `401` |
 | FR-SEC-active-account, instructor | integration | A token of an instructor whose `enabled` is set false gets `401` on its next request |
 | POST-3, POST-4 | integration | After deactivation her team, weekly activity reports and peer evaluations are unchanged |
@@ -199,7 +202,7 @@ erDiagram
 | BR-deactivated-student-evaluation, report | integration | The section report includes her for a week before her deactivation and omits her for that week and later |
 | BR-deactivated-student-evaluation, form | integration (teammate list) and E2E (Cypress, API stubbed) | A teammate whose previous week ended before her deactivation date comes back `evaluable: true` and is offered in the form; one deactivated during the week being rated comes back `evaluable: false` and is not offered; `deactivatedOn` is absent from the teammate list |
 | BR-submission-owed | integration | After deactivation she is not listed as owing, and teammates who evaluated every other active teammate do not owe an evaluation of her (regression on `SubmissionStatusService`) |
-| Interim re-enable | integration | `PUT` with `enabled: true` on a deactivated student clears `deactivatedOn`; `PUT` with `enabled: false` on an active student gets `400` |
+| Interim re-enable | integration | `PUT` with `enabled: true` on a deactivated student clears `deactivatedOn`; `PUT` with `enabled: false` on an active student gets `400`; `PUT` renaming a deactivated student (`enabled: false`) succeeds and leaves `deactivatedOn` unchanged |
 | Migration backfill | manual, on the staging deploy | Flyway applies V7 cleanly, and every student with `enabled = 0` has a `deactivated_on`. The integration tests run the `dev` profile, whose schema comes from `ddl-auto: create`, so they cannot exercise the backfill |
 
 ## Open questions / risks
