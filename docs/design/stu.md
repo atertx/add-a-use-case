@@ -191,6 +191,7 @@ erDiagram
 | UC-STU-deactivate-student main | integration | An instructor assigned to the course section posts `…/deactivation`: `200`, `enabled` false, `deactivatedOn` is the fixed clock's date |
 | UC-STU-deactivate-student main, course admin | integration | The course admin who owns the course but is not assigned to the course section gets `200` on `GET /students/{studentId}` (step 2) and on the deactivation |
 | UC-STU-deactivate-student 3a | integration | An unassigned instructor, a course admin of another course, the student herself, and another student each get `403` in the `Result` envelope; the row is unchanged |
+| UC-STU-deactivate-student step 2, course admin of another course | integration | A course admin of another course gets `403` on `GET /students/{studentId}` |
 | UC-STU-deactivate-student 3b | integration | A second deactivation gets `409`; `deactivatedOn` is unchanged |
 | UC-STU-deactivate-student 4a | E2E (Cypress, API stubbed) | Cancel at the confirmation sends no request |
 | UC-STU-deactivate-student step 4 | E2E (Cypress, API stubbed) | The confirmation contains one sentence for each consequence listed under the sequence diagram (matched on a key phrase per sentence: "log in", "team", "owes", "evaluate", "report", "kept", "reactivated") |
