@@ -1472,7 +1472,11 @@ Details:
 6. The system deactivates the student and alerts the course admin or instructor that this student has been deactivated.
 7. Use case ends.
 
-**Extensions:**
+**Extensions:** 
+- **3a. The actor is not permitted to deactivate this student (BR-student-lifecycle):**
+  - 3a1. The system refuses the deactivation and alerts the actor that they do not have permission.
+  - 3a2. Use case ends; the student's account is unchanged.
+  
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
 **Business Rules:** BR-student-lifecycle
