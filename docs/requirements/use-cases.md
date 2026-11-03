@@ -1462,6 +1462,7 @@ Details:
 
 **Postconditions:**
 - POST-1. The student's account is deactivated.
+- POST-2. From her next request onward, the student is denied access to protected resources, including through a session she signed in to before the deactivation (FR-SEC-active-account).
 
 **Main Success Scenario:**
 1. The course admin or instructor indicates to deactivate a student.
