@@ -58,6 +58,7 @@ describe('Deactivate a student', () => {
     })
     cy.get('.el-message-box').contains('button', 'Deactivate').should('be.visible')
     cy.get('.el-message-box').contains('button', 'Cancel').should('be.visible')
+    cy.screenshot('deactivate-confirmation', { capture: 'viewport' })
   })
 
   it('sends nothing when the warning is cancelled (4a)', () => {
@@ -125,7 +126,7 @@ describe('Peer evaluation form offers only evaluable teammates (BR-deactivated-s
       ])
     }).as('teammates')
     cy.intercept('GET', '**/evaluations/evaluators/*/week/*', { body: ok([]) }).as('existing')
-    cy.visit('/submit-evaluations')
+    cy.visit('/evaluations/submit-evaluations')
     cy.wait('@teammates')
     cy.wait('@existing')
 
