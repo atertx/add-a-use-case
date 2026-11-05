@@ -1462,6 +1462,9 @@ Details:
 
 **Postconditions:**
 - POST-1. The student's account is deactivated.
+- POST-2. From her next request onward, the student is denied access to protected resources, including through a session she signed in to before the deactivation (FR-SEC-active-account).
+- POST-3. The date of the deactivation is recorded (BR-deactivated-student-evaluation).
+- POST-4. The student remains a member of her team, and her weekly activity reports and peer evaluations are kept (BR-student-lifecycle).
 
 **Main Success Scenario:**
 1. The course admin or instructor indicates to deactivate a student.
@@ -1472,13 +1475,22 @@ Details:
 6. The system deactivates the student and alerts the course admin or instructor that this student has been deactivated.
 7. Use case ends.
 
-**Extensions:**
+**Extensions:** 
+- **3a. The actor is not permitted to deactivate this student (BR-student-lifecycle):**
+  - 3a1. The system refuses the deactivation and alerts the actor that they do not have permission.
+  - 3a2. Use case ends; the student's account is unchanged.
+- **3b. The student is already deactivated:**
+  - 3b1. The system alerts the actor that the student is already deactivated.
+  - 3b2. Use case ends; nothing changes.
+- **4a. The actor cancels at the warning:**
+  - 4a1. Use case ends; the student's account is unchanged.
+
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
-**Business Rules:** BR-student-lifecycle
+**Business Rules:** BR-student-lifecycle, BR-submission-owed, BR-deactivated-student-evaluation
 
 **Associated Information:**
-- Consequence of the deactivation: The student will no longer be able to log in or submit weekly activity reports and peer evaluations, but the student's account and her previously submitted work are kept in the system. Deactivation will NOT remove the student from the system, and the account can be reactivated in the future (UC-STU-reactivate-student: Reactivate a student). This is distinct from deletion (UC-STU-delete-student: Delete a student), which is a physical, unrecoverable delete. The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
+- Consequence of the deactivation: The student will no longer be able to log in, and any session she already has open stops working at her next request (FR-SEC-active-account). She stays on her team, but she no longer owes weekly activity reports or peer evaluations and is not reminded of them, and her teammates no longer owe evaluations of her (BR-submission-owed). Her teammates cannot evaluate her for the week of the deactivation or any later week, and the section's peer evaluation report shows her only for earlier weeks (BR-deactivated-student-evaluation). Her account and her previously submitted work are kept in the system. Deactivation will NOT remove the student from the system, and the account can be reactivated in the future (UC-STU-reactivate-student: Reactivate a student). This is distinct from deletion (UC-STU-delete-student: Delete a student), which is a physical, unrecoverable delete. The course admin or instructor can cancel the use case at any time prior to submitting it.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-reactivate-student: Reactivate a student
 **Assumptions:**
@@ -1513,10 +1525,12 @@ Details:
 **Extensions:**
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a previously withdrawn student returns to a course section.
-**Business Rules:** BR-student-lifecycle
+**Business Rules:** BR-student-lifecycle, BR-deactivated-student-evaluation
 
 **Associated Information:**
 - The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
+- A deactivated student stays on her team, so reactivation returns her to that team.
+- Reactivation clears her deactivation date, so BR-deactivated-student-evaluation no longer applies to her.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-deactivate-student: Deactivate a student
 **Assumptions:**
