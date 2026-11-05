@@ -4,6 +4,8 @@ import org.junit.jupiter.api.AfterEach;
 import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.UserUtils;
+import team.projectpulse.system.exception.StudentAlreadyDeactivatedException;
+import team.projectpulse.team.Team;
 import team.projectpulse.user.userinvitation.UserInvitationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,7 +21,9 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,6 +47,8 @@ class StudentServiceTest {
     PasswordEncoder passwordEncoder;
     @Mock
     UserUtils userUtils;
+    @Mock
+    Clock clock;
 
     @InjectMocks
     private StudentService studentService;
@@ -213,6 +219,43 @@ class StudentServiceTest {
         assertThat(result.getFirstName()).isEqualTo("Johnny");
         assertThat(result.isEnabled()).isFalse();
         assertThat(result.getDeactivatedOn()).isEqualTo(LocalDate.of(2023, 8, 16));
+    }
+
+    @Test
+    void testDeactivateStudentRecordsTodayAndKeepsTheTeam() {
+        // Given: today is 2023-08-20 on the injected clock
+        Clock fixedClock = Clock.fixed(LocalDate.of(2023, 8, 20).atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+        Student john = this.students.get(0);
+        Team team1 = new Team("Team1", "", "");
+        john.setTeam(team1);
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(john)).willReturn(john);
+
+        // When
+        Student result = this.studentService.deactivateStudent(1);
+
+        // Then
+        assertThat(result.isEnabled()).isFalse();
+        assertThat(result.getDeactivatedOn()).isEqualTo(LocalDate.of(2023, 8, 20));
+        assertThat(result.getTeam()).isSameAs(team1);
+    }
+
+    @Test
+    void testDeactivateStudentAlreadyDeactivated() {
+        // Given: extension 3b
+        Student john = this.students.get(0);
+        john.deactivate(LocalDate.of(2023, 8, 16));
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+
+        // When
+        Throwable thrown = catchThrowable(() -> this.studentService.deactivateStudent(1));
+
+        // Then
+        assertThat(thrown).isInstanceOf(StudentAlreadyDeactivatedException.class).hasMessage("This student is already deactivated.");
+        assertThat(john.getDeactivatedOn()).isEqualTo(LocalDate.of(2023, 8, 16));
+        verify(this.studentRepository, never()).save(any(Student.class));
     }
 
     @Test
