@@ -29,6 +29,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import team.projectpulse.user.UserRepository;
 import team.projectpulse.security.authorizationmanagers.*;
 
 import java.security.KeyPair;
@@ -135,7 +136,7 @@ public class SecurityConfiguration {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, ActiveAccountJwtAuthenticationConverter activeAccountJwtAuthenticationConverter) throws Exception {
         return http
                 .authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests
                         // Security rules for the /courses/** endpoint.
@@ -318,7 +319,8 @@ public class SecurityConfiguration {
                 .cors(Customizer.withDefaults())
                 .httpBasic(httpBasic -> httpBasic.authenticationEntryPoint(this.customBasicAuthenticationEntryPoint))
                 .oauth2ResourceServer(oauth2ResourceServer -> oauth2ResourceServer
-                        .jwt(Customizer.withDefaults())
+                        // FR-SEC-active-account: every bearer request is refused once its account is deactivated
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(activeAccountJwtAuthenticationConverter))
                         .authenticationEntryPoint(this.customBearerTokenAuthenticationEntryPoint)
                         .accessDeniedHandler(this.customBearerTokenAccessDeniedHandler))
                 /* Configures the spring boot application as an OAuth2 Resource Server which authenticates all
@@ -346,8 +348,16 @@ public class SecurityConfiguration {
         return NimbusJwtDecoder.withPublicKey(this.publicKey).build();
     }
 
+    /**
+     * Converts a verified bearer JWT into an authentication: refuses a deactivated or deleted account
+     * (FR-SEC-active-account), then reads the authorities from the {@code authorities} claim.
+     */
     @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+    public ActiveAccountJwtAuthenticationConverter jwtAuthenticationConverter(UserRepository userRepository) {
+        return new ActiveAccountJwtAuthenticationConverter(userRepository, authoritiesConverter());
+    }
+
+    private static JwtAuthenticationConverter authoritiesConverter() {
         JwtGrantedAuthoritiesConverter jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
 
         /*
