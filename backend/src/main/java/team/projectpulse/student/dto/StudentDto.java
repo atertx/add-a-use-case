@@ -2,6 +2,15 @@ package team.projectpulse.student.dto;
 
 import jakarta.validation.constraints.NotEmpty;
 
+import java.time.LocalDate;
+
+/**
+ * @param deactivatedOn the date the student was deactivated, or {@code null} while she is active, and always
+ *                      {@code null} on the teammate list
+ * @param evaluable     on the teammate list only: whether she may be evaluated for the week the peer evaluation form
+ *                      rates (BR-deactivated-student-evaluation); {@code null} everywhere else
+ */
+
 public record StudentDto(Integer id,
                          @NotEmpty(message = "username is required.")
                          String username,
@@ -16,5 +25,16 @@ public record StudentDto(Integer id,
                          Integer sectionId,
                          String sectionName,
                          Integer teamId,
-                         String teamName) {
+                         String teamName,
+                         LocalDate deactivatedOn,
+                         Boolean evaluable) {
+
+    /**
+     * The teammate-list form of this DTO: carries {@code evaluable} and hides the deactivation date from teammates.
+     */
+    public StudentDto forTeammateList(boolean evaluable) {
+        return new StudentDto(id, username, firstName, lastName, email, enabled, roles, sectionId, sectionName,
+                teamId, teamName, null, evaluable);
+    }
+
 }

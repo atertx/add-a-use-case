@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -303,6 +304,47 @@ class EvaluationServiceTest {
         Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
         given(this.clock.instant()).willReturn(fixedClock.instant());
         given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        PeerEvaluation newPeerEvaluation = new PeerEvaluation("2023-W31", amanda, woody, List.of(), "public comment", "private comment");
+        given(this.evaluationRepository.save(newPeerEvaluation)).willReturn(newPeerEvaluation);
+
+        // When
+        PeerEvaluation savedPeerEvaluation = this.evaluationService.addPeerEvaluation(newPeerEvaluation);
+
+        // Then
+        assertThat(savedPeerEvaluation).isEqualTo(newPeerEvaluation);
+        verify(this.evaluationRepository, times(1)).save(newPeerEvaluation);
+    }
+
+    @Test
+    void testAddPeerEvaluationOfStudentDeactivatedDuringThatWeek() {
+        // Given: BR-deactivated-student-evaluation, Woody was deactivated on Wednesday of 2023-W31, the week being rated
+        LocalDate fixedDate = LocalDate.of(2023, 8, 13); // the Sunday of 2023-W32, so the previous week is 2023-W31
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+        this.woody.deactivate(LocalDate.of(2023, 8, 2));
+
+        PeerEvaluation newPeerEvaluation = new PeerEvaluation("2023-W31", amanda, woody, List.of(), "public comment", "private comment");
+
+        // When
+        Throwable throwable = catchThrowable(() -> this.evaluationService.addPeerEvaluation(newPeerEvaluation));
+
+        // Then
+        assertThat(throwable)
+                .isInstanceOf(PeerEvaluationIllegalArgumentException.class)
+                .hasMessage("Woody was deactivated and cannot be evaluated for this week.");
+        verify(this.evaluationRepository, never()).save(any(PeerEvaluation.class));
+    }
+
+    @Test
+    void testAddPeerEvaluationOfStudentDeactivatedAfterThatWeek() {
+        // Given: Woody was deactivated on Monday of 2023-W32, after the rated week 2023-W31 ended
+        LocalDate fixedDate = LocalDate.of(2023, 8, 13);
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+        this.woody.deactivate(LocalDate.of(2023, 8, 7));
 
         PeerEvaluation newPeerEvaluation = new PeerEvaluation("2023-W31", amanda, woody, List.of(), "public comment", "private comment");
         given(this.evaluationRepository.save(newPeerEvaluation)).willReturn(newPeerEvaluation);

@@ -394,6 +394,18 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void testSectionReportShowsDeactivatedStudentOnlyForWeeksBeforeHerDeactivation() throws Exception {
+        // BR-deactivated-student-evaluation: Nora (seed) was deactivated on 2023-08-16, in 2023-W33
+        this.mockMvc.perform(get(this.baseUrl + "/evaluations/sections/2/week/2023-W32").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminBingyangToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[?(@.firstName == 'Nora')]", Matchers.hasSize(1)));
+        this.mockMvc.perform(get(this.baseUrl + "/evaluations/sections/2/week/2023-W33").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminBingyangToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages", Matchers.hasSize(11)))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[?(@.firstName == 'Nora')]", Matchers.empty()));
+    }
+
+    @Test
     void testAdminBingyangGenerateWeeklyPeerEvaluationForSection() throws Exception {
         this.mockMvc.perform(get(this.baseUrl + "/evaluations/sections/2/week/2023-W31").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminBingyangToken))
                 .andExpect(jsonPath("$.flag").value(true))
@@ -401,7 +413,7 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Generate weekly evaluations for section successfully"))
                 .andExpect(jsonPath("$.data.sectionName").value("2023-2024"))
                 .andExpect(jsonPath("$.data.week").value("2023-W31"))
-                .andExpect(jsonPath("$.data.peerEvaluationAverages", Matchers.hasSize(11)))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages", Matchers.hasSize(12))) // 11 active students on a team, plus Nora, deactivated in 2023-W33
                 .andExpect(jsonPath("$.data.peerEvaluationAverages[0].studentId").value(4))
                 .andExpect(jsonPath("$.data.peerEvaluationAverages[0].firstName").value("John"))
                 .andExpect(jsonPath("$.data.peerEvaluationAverages[0].lastName").value("Smith"))
