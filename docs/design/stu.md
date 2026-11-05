@@ -41,8 +41,8 @@ classDiagram
     class StudentLifecycleAuthorizationManager {
         <<new, security>>
     }
-    class JwtAuthenticationConverter {
-        <<reused bean, SecurityConfiguration>>
+    class ActiveAccountJwtAuthenticationConverter {
+        <<new, security; the jwtAuthenticationConverter bean>>
         per-request active-account check NEW
     }
     class EvaluationService {
@@ -59,14 +59,14 @@ classDiagram
     StudentLifecycleAuthorizationManager --> StudentSecurityService
     EvaluationService --> Student
     Student --> WeekKeys
-    JwtAuthenticationConverter --> UserRepository
+    ActiveAccountJwtAuthenticationConverter --> UserRepository
 ```
 
-- **Backend, `student/`:** `Student` gains `deactivatedOn` and three methods; `StudentService.deactivateStudent` (injects the `Clock`), which throws a new `StudentAlreadyDeactivatedException` for 3b; `StudentController.deactivateStudent`; `StudentSecurityService.isCurrentUserCourseAdminOfStudent` (the student's `section.course.courseAdmin` is the caller, whose id comes from `UserUtils`, failing closed on an unknown id); `StudentDto` gains `deactivatedOn` and `evaluable`, both nullable, and `StudentToStudentDtoConverter` fills `deactivatedOn`.
-- **Backend, `security/`:** new `authorizationmanagers/StudentLifecycleAuthorizationManager` (reads `studentId`; admits `isCurrentUserInstructorOfStudentSection || isCurrentUserCourseAdminOfStudent`). `SecurityConfiguration` gains the route rule, placed with the other `/students/{studentId}` rules (no broader `/students/**` matcher exists), and the active-account check in its existing `jwtAuthenticationConverter` bean. `GET /students/{studentId}` becomes `anyOf(userOwnershipAuthorizationManager, studentLifecycleAuthorizationManager)`, so the course admin who owns the course can open the student (step 2), as BR-section-scoped-access already allows.
+- **Backend, `student/`:** `Student` gains `deactivatedOn` and three methods; `StudentService.deactivateStudent` (injects the `Clock`), which throws a new `StudentAlreadyDeactivatedException` (in `system/exception`, beside the other exceptions `ExceptionHandlerAdvice` maps) for 3b; `StudentController.deactivateStudent`; `StudentSecurityService.isCurrentUserCourseAdminOfStudent` (the student's `section.course.courseAdmin` is the caller, whose id comes from `UserUtils`, failing closed on an unknown id); `StudentDto` gains `deactivatedOn` and `evaluable`, both nullable, and `StudentToStudentDtoConverter` fills `deactivatedOn`.
+- **Backend, `security/`:** new `authorizationmanagers/StudentLifecycleAuthorizationManager` (reads `studentId`; admits `isCurrentUserInstructorOfStudentSection || isCurrentUserCourseAdminOfStudent`). `SecurityConfiguration` gains the route rule, placed with the other `/students/{studentId}` rules (no broader `/students/**` matcher exists), and the active-account check: its `jwtAuthenticationConverter` bean becomes a new `ActiveAccountJwtAuthenticationConverter`, which checks the account and then delegates to the existing authorities-reading `JwtAuthenticationConverter`, and the resource server is wired to it explicitly with `.jwt(jwt -> jwt.jwtAuthenticationConverter(…))`. A wrapper rather than a change to the existing bean, because `JwtAuthenticationConverter.convert` is `final`. `GET /students/{studentId}` becomes `anyOf(userOwnershipAuthorizationManager, studentLifecycleAuthorizationManager)`, so the course admin who owns the course can open the student (step 2), as BR-section-scoped-access already allows.
 - **Backend, `evaluation/`:** `EvaluationService.addPeerEvaluation` and `generateWeeklyPeerEvaluationReportForSection` call `Student.isEvaluableFor(week)`.
 - **Migration:** `db/migration/V7__student_deactivated_on.sql`.
-- **Seed (`seed/DataInitializer`):** the seed has no disabled student today. Add one, made with `deactivate(date)` and never with `setEnabled(false)`, on a team in section 2, with her date inside the fixed clock's week, so the tests have a deactivated teammate.
+- **Seed (`seed/DataInitializer`):** the seed had no disabled student. It now has Nora Quinn on Team3 in course section 2, made with `deactivate(2023-08-16)` and never with `setEnabled(false)`. Her date is in 2023-W33, the fixed clock's week, so the tests have a deactivated teammate who is still evaluable for the rated week, 2023-W32. She is saved after the course graph, so every earlier seeded user keeps its id.
 - **Reused unchanged:** `notification/SubmissionStatusService` already counts only students whose account is active, as owing and as teammates (BR-submission-owed), so reminders and the "has not submitted" lists change with no code; `ExceptionHandlerAdvice` (`AccountStatusException` → `401`); `request.ts` (redirects to login on `401`); `WeekKeys`; the `Clock` bean.
 - **Frontend:** `apis/student/index.ts` gains `deactivateStudent(id)`, and its `Student` type gains `deactivatedOn` and `evaluable`. In `pages/students/EditStudentForm.vue`, the Status switch is replaced: an active student shows a **Deactivate** button, and a deactivated student shows "Deactivated on {date}" with an interim **Re-enable** button. `pages/evaluations/SubmitTeamsEvaluations.vue` offers a teammate only when `evaluable` is `true`. `Students.vue` keeps its Enabled/Disabled tag.
 
@@ -117,7 +117,7 @@ The confirmation (step 4) states each consequence in the use case's Associated I
 sequenceDiagram
     participant S as Deactivated student's SPA
     participant F as BearerTokenAuthenticationFilter
-    participant C as jwtAuthenticationConverter
+    participant C as ActiveAccountJwtAuthenticationConverter
     participant U as UserRepository
     S->>F: Any API request, Bearer JWT not yet expired
     F->>F: Verify the signature and expiry, as today
@@ -155,7 +155,7 @@ sequenceDiagram
 
 **The server decides whether the evaluation form offers a teammate.** The teammate list carries `evaluable`, computed for the previous week, and the form offers her only when it is true. For example, a student deactivated on Wednesday of week 9 is still evaluable for week 8, which her teammates rate during week 9. Rejected: hiding teammates whose `enabled` is false, which contradicts BR-deactivated-student-evaluation in exactly that case. Rejected: sending her deactivation date to the form and comparing weeks there, which duplicates the rule client-side and shows teammates the date.
 
-**The active-account check runs on every bearer request, in the `jwtAuthenticationConverter`.** The converter loads the user named by the `userId` claim and throws `DisabledException` when the account is deactivated or gone. The existing entry point and `ExceptionHandlerAdvice` turn that into a `401`, and the SPA already redirects to login on a `401`. This realizes FR-SEC-active-account for students and instructors alike, at one primary-key read per request. For deactivated accounts it closes part of [TD-jwt-revocation](architectural-design.md#risks-and-technical-debt); a leaked token for an active account is still valid for its full 2 hours. Rejected: a revocation list or a token version, which add state to keep and clean up. Rejected: shorter token lifetimes, which shrink the window but still miss "her next request". **This changes platform-tier sections of the architecture-of-record (Crosscutting Concepts > Authentication, the authorized-request runtime view, TD-jwt-revocation). Per `/design`, those sections are amended in a separate change, not by this design.**
+**The active-account check runs on every bearer request, in the `jwtAuthenticationConverter` bean** (an `ActiveAccountJwtAuthenticationConverter` wrapping the authorities converter). The converter loads the user named by the `userId` claim and throws `DisabledException` when the account is deactivated or gone. The existing entry point and `ExceptionHandlerAdvice` turn that into a `401`, and the SPA already redirects to login on a `401`. This realizes FR-SEC-active-account for students and instructors alike, at one primary-key read per request. For deactivated accounts it closes part of [TD-jwt-revocation](architectural-design.md#risks-and-technical-debt); a leaked token for an active account is still valid for its full 2 hours. Rejected: a revocation list or a token version, which add state to keep and clean up. Rejected: shorter token lifetimes, which shrink the window but still miss "her next request". **This changes platform-tier sections of the architecture-of-record (Crosscutting Concepts > Authentication, the authorized-request runtime view, TD-jwt-revocation). Per `/design`, those sections are amended in a separate change, not by this design.**
 
 **Refusals come at confirm, not before the warning.** The use case places 3a and 3b at step 3. The form shows Deactivate only for an enabled student, which covers 3b in the normal case, and the server refuses both at the `POST`, after the warning. The warning changes nothing, so a refusal after it still leaves the account unchanged (3a2, 3b2). Rejected: a pre-check endpoint called before the warning, which adds a route for a rare case.
 
