@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -353,6 +354,41 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
                 .andExpect(jsonPath("$.message").value("No permission."))
                 .andExpect(jsonPath("$.data").value("Access Denied"));
+    }
+
+    // BR-deactivated-student-evaluation: the teammate list says whom the evaluation form may offer for the rated week
+
+    @Autowired
+    StudentRepository studentRepository;
+
+    private String loginMavis() throws Exception {
+        String body = this.mockMvc.perform(post(this.baseUrl + "/users/login").with(httpBasic("m.huber@abc.edu", "123456"))).andReturn().getResponse().getContentAsString();
+        return "Bearer " + new JSONObject(body).getJSONObject("data").getString("token");
+    }
+
+    @Test
+    void testTeammateDeactivatedAfterTheRatedWeekIsEvaluable() throws Exception {
+        // Nora (Team3) was deactivated on 2023-08-16 (2023-W33); the dev clock's rated week is 2023-W32
+        this.mockMvc.perform(get(this.baseUrl + "/students/teams/3").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, loginMavis()))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data", Matchers.hasSize(5)))
+                .andExpect(jsonPath("$.data[?(@.firstName == 'Nora')].evaluable", Matchers.contains(true)))
+                .andExpect(jsonPath("$.data[?(@.firstName == 'Mavis')].evaluable", Matchers.contains(true)))
+                .andExpect(jsonPath("$.data[*].deactivatedOn", Matchers.everyItem(Matchers.nullValue())));
+    }
+
+    @Test
+    void testTeammateDeactivatedDuringTheRatedWeekIsNotEvaluable() throws Exception {
+        // Given: Nora's deactivation moved into 2023-W32, the rated week
+        Student nora = this.studentRepository.findById(noraId()).orElseThrow();
+        nora.reactivate();
+        nora.deactivate(LocalDate.of(2023, 8, 9));
+        this.studentRepository.saveAndFlush(nora);
+
+        this.mockMvc.perform(get(this.baseUrl + "/students/teams/3").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, loginMavis()))
+                .andExpect(jsonPath("$.data[?(@.firstName == 'Nora')].evaluable", Matchers.contains(false)))
+                .andExpect(jsonPath("$.data[?(@.firstName == 'Mavis')].evaluable", Matchers.contains(true)))
+                .andExpect(jsonPath("$.data[*].deactivatedOn", Matchers.everyItem(Matchers.nullValue())));
     }
 
 }

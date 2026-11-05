@@ -29,4 +29,12 @@ public record StudentDto(Integer id,
                          LocalDate deactivatedOn,
                          Boolean evaluable) {
 
+    /**
+     * The teammate-list form of this DTO: carries {@code evaluable} and hides the deactivation date from teammates.
+     */
+    public StudentDto forTeammateList(boolean evaluable) {
+        return new StudentDto(id, username, firstName, lastName, email, enabled, roles, sectionId, sectionName,
+                teamId, teamName, null, evaluable);
+    }
+
 }

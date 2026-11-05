@@ -7,11 +7,13 @@ import team.projectpulse.student.dto.StudentDto;
 import team.projectpulse.student.dto.StudentRegistrationRequest;
 import team.projectpulse.system.Result;
 import team.projectpulse.system.StatusCode;
+import team.projectpulse.system.WeekKeys;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -24,13 +26,15 @@ public class StudentController {
     private final StudentRegistrationToStudentConverter studentRegistrationToStudentConverter;
     private final StudentToStudentDtoConverter studentToStudentDtoConverter;
     private final StudentDtoToStudentConverter studentDtoToStudentConverter;
+    private final Clock clock;
 
 
-    public StudentController(StudentService studentService, StudentRegistrationToStudentConverter studentRegistrationToStudentConverter, StudentToStudentDtoConverter studentToStudentDtoConverter, StudentDtoToStudentConverter studentDtoToStudentConverter) {
+    public StudentController(StudentService studentService, StudentRegistrationToStudentConverter studentRegistrationToStudentConverter, StudentToStudentDtoConverter studentToStudentDtoConverter, StudentDtoToStudentConverter studentDtoToStudentConverter, Clock clock) {
         this.studentService = studentService;
         this.studentRegistrationToStudentConverter = studentRegistrationToStudentConverter;
         this.studentToStudentDtoConverter = studentToStudentDtoConverter;
         this.studentDtoToStudentConverter = studentDtoToStudentConverter;
+        this.clock = clock;
     }
 
     @PostMapping("/search")
@@ -50,7 +54,12 @@ public class StudentController {
     @GetMapping("/teams/{teamId}")
     public Result findStudentsByTeamId(@PathVariable Integer teamId) {
         List<Student> students = this.studentService.findStudentsByTeamId(teamId);
-        List<StudentDto> studentDtos = students.stream().map(this.studentToStudentDtoConverter::convert).collect(Collectors.toList());
+        // Each teammate says whether she may be evaluated for the week the peer evaluation form rates
+        // (BR-deactivated-student-evaluation); her deactivation date stays off this list
+        String ratedWeek = WeekKeys.previousWeek(this.clock);
+        List<StudentDto> studentDtos = students.stream()
+                .map(student -> this.studentToStudentDtoConverter.convert(student).forTeammateList(student.isEvaluableFor(ratedWeek)))
+                .collect(Collectors.toList());
         return new Result(true, StatusCode.SUCCESS, "Find students by team id successfully", studentDtos);
     }
     
