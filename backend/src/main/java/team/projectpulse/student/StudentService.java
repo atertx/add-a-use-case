@@ -9,8 +9,6 @@ import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -114,12 +112,13 @@ public class StudentService {
         oldStudent.setLastName(update.getLastName());
         oldStudent.setEmail(update.getEmail());
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        // If the user is an admin, then the user can update all the fields
-        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))) {
-            oldStudent.setEnabled(update.isEnabled());
-//            oldStudent.setRoles(update.getRoles());
+        // Only an instructor may change the status. Interim, until UC-STU-reactivate-student is designed: this edit can
+        // re-enable a deactivated student, but deactivating goes through deactivateStudent, which records the date.
+        if (this.userUtils.hasRole("ROLE_instructor") && update.isEnabled() != oldStudent.isEnabled()) {
+            if (!update.isEnabled()) {
+                throw new IllegalArgumentException("Use Deactivate to deactivate a student.");
+            }
+            oldStudent.reactivate();
         }
 
         return this.studentRepository.save(oldStudent);

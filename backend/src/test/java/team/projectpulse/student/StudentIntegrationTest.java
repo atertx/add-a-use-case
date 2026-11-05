@@ -3,6 +3,7 @@ package team.projectpulse.student;
 import tools.jackson.databind.json.JsonMapper;
 import team.projectpulse.AbstractIntegrationTest;
 import team.projectpulse.system.StatusCode;
+import team.projectpulse.user.UserRepository;
 import org.hamcrest.Matchers;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,9 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
     String studentEricToken;
 
     String adminTimToken;
+
+    @Autowired
+    UserRepository userRepository;
 
     @Value("${api.endpoint.base-url}")
     String baseUrl;
@@ -250,6 +254,50 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.password").doesNotExist())
                 .andExpect(jsonPath("$.data.enabled").value(true)) // The enabled status should not be changed.
                 .andExpect(jsonPath("$.data.roles").value("student")); // The role should not be changed.
+    }
+
+    // Interim, until UC-STU-reactivate-student: the generic edit can re-enable but never deactivate
+
+    private String studentJson(String username, String firstName, String lastName, String email, boolean enabled) throws Exception {
+        Map<String, Object> studentDto = new HashMap<>();
+        studentDto.put("username", username);
+        studentDto.put("firstName", firstName);
+        studentDto.put("lastName", lastName);
+        studentDto.put("email", email);
+        studentDto.put("enabled", enabled);
+        return this.jsonMapper.writeValueAsString(studentDto);
+    }
+
+    private Integer noraId() {
+        return this.userRepository.findByEmail("n.quinn@abc.edu").orElseThrow().getId();
+    }
+
+    @Test
+    void testInstructorCannotDeactivateThroughUpdate() throws Exception {
+        this.mockMvc.perform(put(this.baseUrl + "/students/4").contentType(MediaType.APPLICATION_JSON).content(studentJson("j.smith@abc.edu", "John", "Smith", "j.smith@abc.edu", false)).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("Use Deactivate to deactivate a student."));
+        this.mockMvc.perform(get(this.baseUrl + "/students/4").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminToken))
+                .andExpect(jsonPath("$.data.enabled").value(true))
+                .andExpect(jsonPath("$.data.deactivatedOn").isEmpty());
+    }
+
+    @Test
+    void testInstructorReEnablesDeactivatedStudentThroughUpdate() throws Exception {
+        this.mockMvc.perform(put(this.baseUrl + "/students/" + noraId()).contentType(MediaType.APPLICATION_JSON).content(studentJson("n.quinn@abc.edu", "Nora", "Quinn", "n.quinn@abc.edu", true)).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.enabled").value(true))
+                .andExpect(jsonPath("$.data.deactivatedOn").isEmpty());
+    }
+
+    @Test
+    void testInstructorRenamesDeactivatedStudentWithoutChangingStatus() throws Exception {
+        this.mockMvc.perform(put(this.baseUrl + "/students/" + noraId()).contentType(MediaType.APPLICATION_JSON).content(studentJson("n.quinn@abc.edu", "Norah", "Quinn", "n.quinn@abc.edu", false)).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.firstName").value("Norah"))
+                .andExpect(jsonPath("$.data.enabled").value(false))
+                .andExpect(jsonPath("$.data.deactivatedOn").value("2023-08-16"));
     }
 
     @Test

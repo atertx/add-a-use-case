@@ -23,6 +23,7 @@ import team.projectpulse.ram.usecase.*;
 import team.projectpulse.rubric.*;
 import team.projectpulse.section.Section;
 import team.projectpulse.student.Student;
+import team.projectpulse.student.StudentRepository;
 import team.projectpulse.team.Team;
 import team.projectpulse.user.PeerEvaluationUser;
 import team.projectpulse.user.userinvitation.UserInvitation;
@@ -52,9 +53,10 @@ public class DataInitializer implements CommandLineRunner {
     private final DocumentTemplateRegistry documentTemplateRegistry;
     private final DocumentRepository documentRepository;
     private final CommentThreadRepository commentThreadRepository;
+    private final StudentRepository studentRepository;
 
 
-    public DataInitializer(CourseRepository courseRepository, InstructorRepository instructorRepository, PeerEvaluationRepository peerEvaluationRepository, ActivityRepository activityRepository, PasswordEncoder passwordEncoder, UserInvitationRepository userInvitationRepository, RequirementArtifactService requirementArtifactService, ArtifactLinkRepository artifactLinkRepository, UseCaseService useCaseService, DocumentTemplateRegistry documentTemplateRegistry, DocumentRepository documentRepository, CommentThreadRepository commentThreadRepository) {
+    public DataInitializer(CourseRepository courseRepository, InstructorRepository instructorRepository, PeerEvaluationRepository peerEvaluationRepository, ActivityRepository activityRepository, PasswordEncoder passwordEncoder, UserInvitationRepository userInvitationRepository, RequirementArtifactService requirementArtifactService, ArtifactLinkRepository artifactLinkRepository, UseCaseService useCaseService, DocumentTemplateRegistry documentTemplateRegistry, DocumentRepository documentRepository, CommentThreadRepository commentThreadRepository, StudentRepository studentRepository) {
         this.courseRepository = courseRepository;
         this.instructorRepository = instructorRepository;
         this.peerEvaluationRepository = peerEvaluationRepository;
@@ -67,6 +69,7 @@ public class DataInitializer implements CommandLineRunner {
         this.documentTemplateRegistry = documentTemplateRegistry;
         this.documentRepository = documentRepository;
         this.commentThreadRepository = commentThreadRepository;
+        this.studentRepository = studentRepository;
     }
 
     @Override
@@ -927,6 +930,16 @@ public class DataInitializer implements CommandLineRunner {
         activities.add(new Activity(john, "2023-W40", team1, ActivityCategory.DOCUMENTATION, "Update User Guide", "Update the user guide with new features from the latest release", 4.5, 4.0, ActivityStatus.IN_PROGRESS));
         activities.add(new Activity(john, "2023-W40", team1, ActivityCategory.BUGFIX, "Fix API Response Bug", "Resolve the issue with incorrect data in API responses", 5.0, 4.0, ActivityStatus.IN_PROGRESS));
         this.activityRepository.saveAll(activities);
+
+        // A deactivated student on Team3 (UC-STU-deactivate-student). Saved after the course graph so every earlier
+        // user keeps its id. Her deactivation date, Wednesday 2023-08-16, is in 2023-W33, the dev clock's week, so
+        // her teammates can still evaluate her for 2023-W32 but not for 2023-W33 (BR-deactivated-student-evaluation).
+        // Deactivate with deactivate(date), never setEnabled(false), so the date is recorded.
+        Student nora = new Student("n.quinn@abc.edu", "Nora", "Quinn", "n.quinn@abc.edu", this.passwordEncoder.encode("123456"), true, "student");
+        nora.setSection(section2);
+        nora.setTeam(team3);
+        nora.deactivate(LocalDate.of(2023, 8, 16));
+        this.studentRepository.save(nora);
 
         UserInvitation userInvitationForElon = new UserInvitation("e.musk@abc.edu", 1, 2, "registrationToken", "instructor");
         UserInvitation userInvitationForLucas = new UserInvitation("l.santos@abc.edu", 1, 2, "registrationToken", "student");
