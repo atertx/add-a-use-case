@@ -11,6 +11,8 @@ export interface Student {
   sectionName?: string
   teamId?: number
   teamName?: string
+  deactivatedOn?: string | null // ISO date (YYYY-MM-DD) the student was deactivated; null while active, and always null on the teammate list
+  evaluable?: boolean | null // Teammate list only: whether she may be evaluated for the week the peer evaluation form rates
 }
 
 export interface PaginationParams {
@@ -101,4 +103,11 @@ export interface DeleteStudentResponse {
   code: number
   message: string
   data: null
+}
+
+export interface DeactivateStudentResponse {
+  flag: boolean
+  code: number
+  message: string
+  data: Student
 }

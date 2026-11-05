@@ -182,7 +182,8 @@ onMounted(async () => {
 async function loadStudents() {
   // On the back end, the page number starts from 0, so subtract 1 here
   const result: FindStudentByTeamIdResponse = await findStudentsByTeamId(teamId.value)
-  students.value = result.data
+  // Offer only teammates the server says may be evaluated for the rated week (BR-deactivated-student-evaluation)
+  students.value = result.data.filter((student) => student.evaluable === true)
 }
 
 // Load criteria information
