@@ -51,7 +51,6 @@
 
 <script setup lang="ts">
 import { h } from 'vue'
-import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Student } from '@/apis/student/types'
 import type { FormInstance } from 'element-plus'
@@ -73,6 +72,9 @@ const studentBeingEdited = ref<Student>({
 })
 
 const studentForm = ref<FormInstance>() // Form reference
+
+// The student as stored when the dialog loaded, untouched by edits in the form fields
+let loadedStudent: Student | null = null
 
 // Validation rules
 const rules = {
@@ -108,6 +110,7 @@ async function loadStudent(studentId: number) {
   studentBeingEdited.value.lastName = result.data.lastName
   studentBeingEdited.value.email = result.data.email
   studentBeingEdited.value.teamName = result.data.teamName
+  loadedStudent = { ...result.data }
 }
 
 onMounted(() => {
@@ -175,7 +178,7 @@ async function deactivate() {
   } catch (error) {
     // 3b: request.ts has toasted "This student is already deactivated."; close so the list shows her current status.
     // 3a: request.ts has toasted and opened the forbidden page, so there is nothing to close.
-    if (axios.isAxiosError(error) && error.response?.status === 409) {
+    if ((error as { response?: { status?: number } }).response?.status === 409) {
       emit('close-dialog')
     }
     return
@@ -186,16 +189,22 @@ async function deactivate() {
 }
 
 // Interim re-enable, until UC-STU-reactivate-student is built
+// Sends the stored values, so unsaved edits in the form fields are not saved as a side effect
 async function reEnable() {
-  const student = studentBeingEdited.value
-  await updateStudent({
-    id: student.id,
-    username: student.username,
-    enabled: true,
-    firstName: student.firstName,
-    lastName: student.lastName,
-    email: student.email
-  })
+  if (!loadedStudent) return
+  const student = loadedStudent
+  try {
+    await updateStudent({
+      id: student.id,
+      username: student.username,
+      enabled: true,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      email: student.email
+    })
+  } catch {
+    return // request.ts has already toasted the failure; the dialog stays open
+  }
   ElMessage.success(`${student.firstName} ${student.lastName} has been re-enabled.`)
   emit('close-dialog')
 }
